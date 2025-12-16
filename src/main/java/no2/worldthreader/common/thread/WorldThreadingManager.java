@@ -2,7 +2,6 @@ package no2.worldthreader.common.thread;
 
 import it.unimi.dsi.fastutil.objects.Object2ReferenceOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceLinkedOpenHashMap;
-import it.unimi.dsi.fastutil.objects.Reference2ReferenceMap;
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
 import net.minecraft.CrashReport;
 import net.minecraft.ReportedException;
@@ -14,12 +13,10 @@ import net.minecraft.world.level.Level;
 import no2.worldthreader.WorldThreaderMod;
 import no2.worldthreader.common.ServerWorldTicking;
 import no2.worldthreader.common.WorldThreaderTickPhase;
-import no2.worldthreader.common.interdimensional.InterdimensionalEntityInfo;
 import no2.worldthreader.common.mixin_support.interfaces.MinecraftServerExtended;
 import no2.worldthreader.common.mixin_support.interfaces.ServerWorldExtended;
 
 import java.util.Collection;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Phaser;
 import java.util.concurrent.Semaphore;
@@ -49,10 +46,10 @@ public class WorldThreadingManager {
 	private CrashReport crashReport;
 
     public final Object2ReferenceOpenHashMap<UUID, PlayerInfo> lastPlayerInfos = new Object2ReferenceOpenHashMap<>();
-    private InterdimensionalEntityInfo interdimensionalEntityInfo;
 
 
-    public WorldThreadingManager(MinecraftServer server) {
+
+	public WorldThreadingManager(MinecraftServer server) {
 		WorldThreaderMod.initializeBeforeThreading(server);
 
 		this.server = server;
@@ -168,11 +165,13 @@ public class WorldThreadingManager {
 	}
 
 	private int barrier(Phaser phaser) {
-        this.tryGiveAwayExclusiveWorldAccess();
+        boolean mustUnparkWaitingThread = this.tryGiveAwayExclusiveWorldAccess();
         int phase = phaser.getPhase();
         phaser.arrive();
-        this.unparkThreadWaitingOnExclusiveWorldAccess();
-        return phaser.awaitAdvance(phase);
+        if (mustUnparkWaitingThread) {
+            this.unparkThreadWaitingOnExclusiveWorldAccess();
+        }
+		return phaser.awaitAdvance(phase);
 	}
 
 	public boolean hasExclusiveWorldAccess() {
@@ -219,7 +218,6 @@ public class WorldThreadingManager {
 		this.threadsRequestingExclusiveWorldAccess.getAndIncrement();
 		thread = this.threadWithExclusiveWorldAccess.get();
 		if (thread != null) {
-            //If another thread is waiting for exclusive access already, unpark it to allow it to use this thread's level
 			LockSupport.unpark(thread);
 		}
 
@@ -280,7 +278,7 @@ public class WorldThreadingManager {
 		return totalThreads == arrivedParties;
 	}
 
-    public void tryGiveAwayExclusiveWorldAccess() {
+    public boolean tryGiveAwayExclusiveWorldAccess() {
 		Thread thread = this.threadWithExclusiveWorldAccess.get();
 		if (thread != null) {
 			if (thread == Thread.currentThread()) {
@@ -292,8 +290,11 @@ public class WorldThreadingManager {
 				}
 				this.threadWithExclusiveWorldAccess.set(null);
 				this.exclusiveWorldAccessLock.release();
+			} else {
+                return true; //Must unpark other thread after arriving in barrier
 			}
 		}
+        return false;
     }
 
     public void unparkThreadWaitingOnExclusiveWorldAccess() {
@@ -307,8 +308,7 @@ public class WorldThreadingManager {
 		if (this.crashReport == null) {
 			this.crashReport = crashReport;
 			this.tickBarrier.forceTermination(); //Destroy the tick barrier to prevent all threads from entering a new tick and to wake up the main thread.
-            this.unparkThreadWaitingOnExclusiveWorldAccess();
-            //The main thread will call throwCrashReportIfPresent()
+			//The main thread will call throwCrashReportIfPresent()
 		} else {
 			this.crashReport.addCategory("Crashing while already crashing").setDetail("Crash Report", crashReport);
 		}
@@ -339,37 +339,24 @@ public class WorldThreadingManager {
         }
     }
 
-    public void updateThreadsafeUUIDInfos(Iterable<ServerLevel> allLevels) {
-        this.interdimensionalEntityInfo = new InterdimensionalEntityInfo(allLevels);
-    }
-
-    public ServerLevel getUUIDLevel(UUID uUID, ServerLevel except) {
-        for (Reference2ReferenceMap.Entry<ServerLevel, Set<UUID>> pair : this.interdimensionalEntityInfo.existingEntities().reference2ReferenceEntrySet()) {
-            if (except != pair.getKey() && pair.getValue().contains(uUID)) {
-                return pair.getKey();
-            }
-        }
-        return null;
-    }
-
     public record PlayerInfo(boolean dead, boolean removed, boolean wonGame) {
         public PlayerInfo(ServerPlayer player) {
             this(player.isDeadOrDying(), player.isRemoved(), player.wonGame);
         }
     }
 
-    public boolean wasPlayerAlive(UUID uuid, boolean fallback) {
+    public boolean wasAlive(UUID uuid) {
         PlayerInfo playerInfo = this.lastPlayerInfos.get(uuid);
-        return playerInfo == null ? fallback : !playerInfo.dead() && !playerInfo.removed();
+        return playerInfo == null || !playerInfo.dead() && !playerInfo.removed();
     }
 
-    public boolean wasPlayerDead(UUID uuid) {
+    public boolean wasDead(UUID uuid) {
         PlayerInfo playerInfo = this.lastPlayerInfos.get(uuid);
         return playerInfo != null && playerInfo.dead();
     }
 
 
-    public boolean wasPlayerWonGame(UUID uuid) {
+    public boolean wonGame(UUID uuid) {
         PlayerInfo playerInfo = this.lastPlayerInfos.get(uuid);
         return playerInfo != null && playerInfo.wonGame();
     }

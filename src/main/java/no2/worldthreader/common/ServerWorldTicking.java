@@ -53,7 +53,7 @@ public class ServerWorldTicking {
         try {
             // [VanillaCopy] MinecraftServer#tickChildren
             ProfilerFiller profilerFiller = Profiler.get();
-            profilerFiller.push(() -> serverLevel + " " + serverLevel.dimension().identifier());
+            profilerFiller.push(() -> serverLevel + " " + serverLevel.dimension().location());
             if (server.getTickCount() % 20 == 0) {
                 profilerFiller.push("timeSync");
                 server.synchronizeTime(serverLevel);
@@ -91,7 +91,7 @@ public class ServerWorldTicking {
     private static void delegateCrash(Throwable throwable, String title, ServerLevel serverLevel, WorldThreadingManager worldThreadingManager) {
         String serverLevelOwner = ((ThreadOwnedObject) serverLevel).worldthreader$getOwningThread().getName();
         String chunkCacheOwner = ((ThreadOwnedObject) serverLevel.getChunkSource()).worldthreader$getOwningThread().getName();
-        worldThreadingManager.tryGiveAwayExclusiveWorldAccess();
+        worldThreadingManager.tryGiveAwayExclusiveWorldAccess(); //If the exception was thrown while this thread held exclusive access, it must be returned.
 
         CrashReport crashReport = CrashReport.forThrowable(throwable, title);
         serverLevel.fillReportDetails(crashReport);

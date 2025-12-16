@@ -1,9 +1,9 @@
 import me.modmuss50.mpp.ReleaseType
 
 plugins {
-    id 'fabric-loom' version '1.14-SNAPSHOT'
+    id 'fabric-loom' version '1.11.8'
     id 'maven-publish'
-    id "me.modmuss50.mod-publish-plugin" version "1.1.0"
+    id "me.modmuss50.mod-publish-plugin" version "0.8.3"
 }
 
 version = project.mod_version
@@ -214,18 +214,5 @@ tasks.register("printMinecraftVersion") {
 tasks.register("printModVersion") {
     doLast {
         println project.mod_version
-    }
-}
-
-// Mixin hotswap, debug flags
-afterEvaluate {
-    loom.runs.configureEach {
-        // https://fabricmc.net/wiki/tutorial:mixin_hotswaps
-        def mixinJar = configurations.compileClasspath.files.find { it.name.contains("sponge-mixin") }
-        if (mixinJar != null) {
-            vmArg("-javaagent:${mixinJar}")
-        }
-        vmArg("-Dmixin.debug.export=true")
-        vmArg("-Dmixin.debug=true")
     }
 }
