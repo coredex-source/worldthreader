@@ -53,7 +53,10 @@ public abstract class MinecraftServerMixin implements MinecraftServerExtended {
 		}
 
 		if (this.getGameRules().getBoolean(ModGameRules.ACTIVE.getKey())) {
-			this.worldThreadingManager = new WorldThreadingManager((MinecraftServer) (Object) this);
+			int threadsPerWorld = ModGameRules.THREADS_PER_WORLD != null
+				? this.getGameRules().getInt(ModGameRules.THREADS_PER_WORLD.getKey())
+				: 1;
+			this.worldThreadingManager = new WorldThreadingManager((MinecraftServer) (Object) this, threadsPerWorld);
 		}
 	}
 

@@ -26,6 +26,14 @@ public class ThreadHelper {
     }
 
     public static void setWorldThreadName(Thread thread, ServerLevel world) {
-        thread.setName(WorldThreaderMod.MOD_ID + "_" + world.dimension().location());
+        setWorldThreadName(thread, world, 0, 1);
+    }
+
+    public static void setWorldThreadName(Thread thread, ServerLevel world, int threadIndex, int totalThreads) {
+        if (totalThreads > 1) {
+            thread.setName(WorldThreaderMod.MOD_ID + "_" + world.dimension().location() + "_" + threadIndex);
+        } else {
+            thread.setName(WorldThreaderMod.MOD_ID + "_" + world.dimension().location());
+        }
     }
 }

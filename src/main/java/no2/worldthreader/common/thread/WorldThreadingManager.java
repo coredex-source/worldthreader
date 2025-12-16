@@ -36,6 +36,7 @@ public class WorldThreadingManager {
 	private final Reference2ReferenceLinkedOpenHashMap<Thread, ResourceKey<Level>> worldThreads;
 	private final Reference2ReferenceOpenHashMap<Thread, ThreadOwnedObject[]> worldThreads2OwnedObjects;
 
+	private final int threadsPerWorld;
 
 	private final AtomicInteger threadsRequestingExclusiveWorldAccess = new AtomicInteger();
 	private final Semaphore exclusiveWorldAccessLock = new Semaphore(1);
@@ -50,9 +51,14 @@ public class WorldThreadingManager {
 
 
 	public WorldThreadingManager(MinecraftServer server) {
+		this(server, 1);
+	}
+
+	public WorldThreadingManager(MinecraftServer server, int threadsPerWorld) {
 		WorldThreaderMod.initializeBeforeThreading(server);
 
 		this.server = server;
+		this.threadsPerWorld = Math.max(1, threadsPerWorld);
 		this.tickBarrier = new Phaser();
 		this.withinTickBarrier = new Phaser();
 		this.tickBarrier.register();
@@ -63,16 +69,23 @@ public class WorldThreadingManager {
 		Iterable<ServerLevel> worlds = this.server.getAllLevels();
 		for (ServerLevel world : worlds) {
 			ThreadOwnedObject[] worldThreadOwned = {((ThreadOwnedObject) world), (ThreadOwnedObject) world.getChunkSource()};
-			Thread worldThread = new Thread(() -> ServerWorldTicking.runWorldThread(server, this, world, worldThreadOwned));
-			ThreadHelper.setWorldThreadName(worldThread, world);
-			this.worldThreads2OwnedObjects.put(worldThread, worldThreadOwned);
-			//Insert the worlds in ticking order
-			this.worldThreads.put(worldThread, world.dimension());
+			for (int threadIndex = 0; threadIndex < this.threadsPerWorld; threadIndex++) {
+				final int index = threadIndex;
+				Thread worldThread = new Thread(() -> ServerWorldTicking.runWorldThread(server, this, world, worldThreadOwned, index, this.threadsPerWorld));
+				ThreadHelper.setWorldThreadName(worldThread, world, threadIndex, this.threadsPerWorld);
+				this.worldThreads2OwnedObjects.put(worldThread, worldThreadOwned);
+				//Insert the worlds in ticking order
+				this.worldThreads.put(worldThread, world.dimension());
 
-            this.tickBarrier.register();
-			this.withinTickBarrier.register();
-			worldThread.start();
+				this.tickBarrier.register();
+				this.withinTickBarrier.register();
+				worldThread.start();
+			}
 		}
+	}
+
+	public int getThreadsPerWorld() {
+		return this.threadsPerWorld;
 	}
 
 	public static void ensureExclusiveScoreboardAccess(MinecraftServer server) {

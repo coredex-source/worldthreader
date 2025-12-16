@@ -21,20 +21,31 @@ public class ServerWorldTicking {
         return world.getLevelData() instanceof PrimaryLevelData;
     }
 
-
     public static void runWorldThread(MinecraftServer server, WorldThreadingManager worldThreadingManager, ServerLevel serverWorld, ThreadOwnedObject[] threadOwnedObjects) {
+        runWorldThread(server, worldThreadingManager, serverWorld, threadOwnedObjects, 0, 1);
+    }
+
+    public static void runWorldThread(MinecraftServer server, WorldThreadingManager worldThreadingManager, ServerLevel serverWorld, ThreadOwnedObject[] threadOwnedObjects, int threadIndex, int totalThreads) {
         Thread currentThread = Thread.currentThread();
         ThreadLocals.WORLD_THREAD_MINECRAFT_SERVER_ACCESS.set(server);
+        boolean isPrimaryThread = threadIndex == 0;
         boolean continueMultithreading = true;
         while (continueMultithreading) {
             //Start of tick barrier
             if (worldThreadingManager.tickBarrier() < 0) {
                 continueMultithreading = false;
             } else {
-                Thread mainThread = ((ThreadOwnedObject) serverWorld).worldthreader$getOwningThread();
-                ThreadHelper.swapOnMultithreadTickStart(mainThread, currentThread, threadOwnedObjects);
-                tickThreaded(server, worldThreadingManager, serverWorld);
-                ThreadHelper.swapOnMultithreadTickEnd(mainThread, currentThread, threadOwnedObjects);
+                if (isPrimaryThread) {
+                    // Only the primary thread (index 0) does the ownership swap and ticking
+                    Thread mainThread = ((ThreadOwnedObject) serverWorld).worldthreader$getOwningThread();
+                    ThreadHelper.swapOnMultithreadTickStart(mainThread, currentThread, threadOwnedObjects);
+                    tickThreaded(server, worldThreadingManager, serverWorld, threadIndex, totalThreads);
+                    ThreadHelper.swapOnMultithreadTickEnd(mainThread, currentThread, threadOwnedObjects);
+                } else {
+                    // Worker threads participate in barriers but don't do main ticking yet
+                    // They can be extended to participate in parallel chunk/entity ticking
+                    tickWorkerThread(server, worldThreadingManager, serverWorld, threadIndex, totalThreads);
+                }
                 //End of tick barrier
                 if (worldThreadingManager.tickBarrier() < 0) {
                     continueMultithreading = false;
@@ -45,6 +56,10 @@ public class ServerWorldTicking {
     }
 
     public static void tickThreaded(MinecraftServer server, WorldThreadingManager worldThreadingManager, ServerLevel serverLevel) {
+        tickThreaded(server, worldThreadingManager, serverLevel, 0, 1);
+    }
+
+    public static void tickThreaded(MinecraftServer server, WorldThreadingManager worldThreadingManager, ServerLevel serverLevel, int threadIndex, int totalThreads) {
         //TODO Issues mostly with Command Blocks: Level Properties, Level Info is not threadsafe.
 
         final BooleanSupplier shouldKeepTicking = worldThreadingManager::shouldKeepTickingThreaded;
@@ -108,5 +123,31 @@ public class ServerWorldTicking {
 
     public static void recoverFailedTeleports(ServerLevel world) {
         ((ServerWorldExtended) world).worldthreader$recoverFailedTeleports();
+    }
+
+    /**
+     * Worker thread tick method for additional threads per world.
+     * These threads participate in barriers to stay synchronized with the primary thread.
+     * Currently, they wait at barriers but can be extended to participate in parallel work.
+     */
+    public static void tickWorkerThread(MinecraftServer server, WorldThreadingManager worldThreadingManager, ServerLevel serverLevel, int threadIndex, int totalThreads) {
+        String crashReason = "Exception in server world worker thread";
+        try {
+            // Worker threads participate in barriers to stay synchronized
+            // Barrier 1: Before world tick
+            worldThreadingManager.withinTickBarrier();
+            // Worker threads could perform parallel chunk/entity ticking here in the future
+
+            // Barrier 2: Before receive teleports
+            worldThreadingManager.withinTickBarrier();
+
+            // Barrier 3: Before recover failed teleports
+            worldThreadingManager.withinTickBarrier();
+
+            // Barrier 4: End of tick phase
+            worldThreadingManager.withinTickBarrier();
+        } catch (Throwable throwable) {
+            delegateCrash(throwable, crashReason, serverLevel, worldThreadingManager);
+        }
     }
 }

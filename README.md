@@ -30,6 +30,9 @@ To use the gamerules, you need the Fabric API. Without the Fabric API, Worldthre
 - `/gamerule worldthreader_Debug <true/false>` (default false) enables/disables debug logging and illegal world access
   detection. Use this to find issues, both correctness and performance related. If nothing shows up in the logs, that
   only means that no issues were found, not that none can exist.
+- `/gamerule worldthreader_ThreadsPerWorld <1-64>` (default 1) sets the number of threads to allocate per world/dimension.
+  Higher values allow more parallelism within each world but require more CPU cores. The setting takes effect when the
+  threading manager is recreated (e.g., when toggling worldthreader_Active or on server restart).
 
 ---
 

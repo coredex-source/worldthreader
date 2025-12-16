@@ -7,6 +7,7 @@ import net.minecraft.world.level.GameRules;
 import no2.worldthreader.WorldThreaderMod;
 import no2.worldthreader.common.thread.WorldThreadingManager;
 import no2.worldthreader.gamerule.BoolRule;
+import no2.worldthreader.gamerule.IntRule;
 
 public class ModGameRules {
 
@@ -15,6 +16,7 @@ public class ModGameRules {
 	public static final boolean INITIAL_FALSE = false;
 	public static BoolRule TELEPORTED_ENTITY_ADDITIONAL_TICK;
 	public static BoolRule DEBUG;
+	public static IntRule THREADS_PER_WORLD;
 
 	public static void registerGameRules() {
 		try {
@@ -33,6 +35,10 @@ public class ModGameRules {
 							commandSourceStack.sendSuccess(() -> Component.literal("Worldthreader: Stopping debug info logging!"), true);
 						}
 					}).build();
+			THREADS_PER_WORLD = IntRule.builder("ThreadsPerWorld", GameRules.Category.MISC)
+					.setInitial(1)
+					.setBounds(1, 64)
+					.build();
 		} catch (Throwable exception) {
 			WorldThreaderMod.LOGGER.error("Worldthreader: Could not register gamerules. Using default values!");
 		}
